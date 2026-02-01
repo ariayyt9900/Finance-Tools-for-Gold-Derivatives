@@ -1,0 +1,165 @@
+%---------------------------*读取数据----------------------------------%
+data=xlsread('C:/Users/Administrator/Desktop/data.xlsx');
+%提取第1列数据，数据中各列为指标变量
+X=data(:,1);
+Y=data(:,2);
+%---------------------------绘制频率直方图----------------------------------%
+ [fx,fc]=ecdf(X);
+figure;
+ecdfhist(fx,fc,30);
+xlabel('变量1');   %为x轴加标签
+ylabel('f(x)');    %为y轴加标签
+
+[fy,fc] =ecdf(Y);
+figure;
+ecdfhist(fy,fc,30);
+xlabel('变量2');   %为x轴加标签
+ylabel('f(x)');    %为y轴加标签
+
+%---------------------------计算偏度和峰度----------------------------------%
+xs=skewness(X)
+ys=skewness(Y)
+kX=kurtosis(X)
+ky=kurtosis(Y)
+
+%---------------------------正态性检验----------------------------------%
+%分别调用jbtest、kstest和lillietest函数对X进行正态性检验
+[h,p]=jbtest(X)                                                     %Jarque-Bera检验
+[h,p]=kstest(X,[X,normcdf(X,mean(X),std(X))])   %Kolmogorov—Smimov检验
+[h,p]=lillietest(Y)                                                 %Lilliefors检验
+%分别调用jbtest、kstest和lillietest函数对Y进行正态性检验
+[h,p]=jbtest(Y)                                                     %Jarque-Bera检验
+[h,p]=kstest(Y,[Y,normcdf(Y,mean(Y),std(Y))])   %Kolmogorov—Smimov检验
+[h,p]=lillietest(Y)                                                 %Lilliefors检验
+
+%%---------------------------求经验分布函数值----------------------------------%
+%调用ecdf函数求X和Y的经验分布函数，Xsort、Ysort是排序后的样本数据，fx,fy是与Xsort、Ysort对应的经验分布函数值向量
+[fx,Xsort]=ecdf(X);
+[fy,Ysort]=ecdf(Y);
+
+%调用spline函数，利用样条插值法求原始样本点(未排序)处的经验分布函数值
+V1= spline(Xsort(2:end),fx(2:end),X);
+V2= spline(Ysort(2:end),fy(2:end),Y);
+
+
+%%---------------------------核分布估计----------------------------------%
+%调用ksdensity函数分别计算原始样本x和Y处的核分布估计值
+H1=ksdensity(X,X,'function','cdf');
+H2=ksdensity(Y,Y,'function','cdf');
+
+%---------------------------绘制各变量的经验分布图和核分布估计图----------------------------------%
+%绘制X经验分布函数图和核分布估计图
+[Xsort,id]=sort(X);          %为了作图的需要，对X进行排序
+figure;                            %新建一个图形窗口
+plot(Xsort,V1(id),'c','LineWidth',1.5)
+hold on
+plot(Xsort,H1(id),'k-','LineWidth',1.5)
+legend('经验分布函数','核分布估计','Location','NorthWest'); %加标注框
+
+%绘制Y经验分布函数图和核分布估计图
+[Ysort,id]=sort(Y);          %为了作图的需要，对X进行排序
+figure;                            %新建一个图形窗口
+plot(Ysort,V2(id),'r-','LineWidth',1.5)
+hold on
+plot(Ysort,H2(id),'k-','LineWidth',1.5)
+legend('经验分布函数','核分布估计','Location','NorthWest');  %加标注框
+
+%---------------------------绘制二元分布图----------------------------------%
+%绘制边缘分布的二元频数直方图
+figure;                            %新建一个图形窗口
+hist3([H1(:),H2(:)],[30,30])
+xlabel('H1(变量1)');              %为X轴加标签
+ylabel('H2(变量2)');              %为Y轴加标签
+zlabel('频数');                     %为Z轴加标签
+
+%绘制边缘分布的二元频率直方图
+hist3([H1(:),H2(:)],[30,30])
+h=get(gca,'Children');                                   %获取频数直方图的旬柄值
+cuv=get(h,'ZData');                                       %获取频数直方图的Z轴坐标
+set(h,'ZData',cuv*30*30/length(X));              %对频数直方图的Z轴坐标作变换
+xlabel('H1(变量1)');              %为X轴加标签
+ylabel('H2(变量2)');              %为Y轴加标签
+zlabel('c(u,v)');                    %为Z轴加标签
+
+%---------------------------拟合copula模型----------------------------------%
+rho_norm = copulafit('Gaussian',[H1(:), H2(:)])
+[rho_t,nuhat,nuci] = copulafit('t',[H1(:), H2(:)])
+alpha_clay = copulafit('Clayton',[H1(:), H2(:)]) 
+alpha_fra = copulafit('Frank',[H1(:), H2(:)]) 
+alpha_gum = copulafit('Gumbel',[H1(:), H2(:)])
+
+%---------------------------copula模型拟合检验----------------------------------%
+%Kendall秩相关系数和Spearman秩相关系数，相关系数，越大越好
+Kendall_norm = copulastat('Gaussian',rho_norm)
+Spearman_norm = copulastat('Gaussian',rho_norm,'type','Spearman') 
+
+Kendall_t = copulastat('t',rho_t)
+Spearman_t = copulastat('t',rho_t,nuhat,'type','Spearman')
+
+Kendall_Clayton = copulastat('Clayton',alpha_clay)
+Spearman_Clayton = copulastat('Clayton',alpha_clay,'type','Spearman')
+
+Kendall_Frank = copulastat('Frank',alpha_fra )
+Spearman_Frank = copulastat('Frank',alpha_fra ,'type','Spearman')
+
+Kendall_Gumbel = copulastat('Gumbel',alpha_gum )
+Spearman_Gumbel = copulastat('Gumbel',alpha_gum ,'type','Spearman')
+
+%平方欧氏距离，越小越好
+C=@(u,v)mean((V1<=u).*(V2<=v));     %定义经验Copula函数C(u，v)
+CopulaEmpirical = zeros(size(V1(:)));
+%通过循环计算经验Copula函数在原始样本点处的函数值
+for i=1:numel(V1)
+    CopulaEmpirical(i)=C(V1(i),V2(i));
+end
+Cgau = copulacdf('Gaussian',[V1(:), V2(:)],rho_norm);
+Ct = copulacdf('t',[V1(:), V2(:)],rho_t,nuhat,nuci);
+CClayton = copulacdf('Clayton',[V1(:), V2(:)],alpha_clay);
+CFrank = copulacdf('Frank',[V1(:), V2(:)],alpha_fra);
+CGumbel = copulacdf('Gumbel',[V1(:), V2(:)],alpha_gum);
+dgau2 = (CopulaEmpirical-Cgau)'* (CopulaEmpirical-Cgau)                            %Gaussian copula平方欧氏距离
+dt2 = (CopulaEmpirical-Ct)'* (CopulaEmpirical-Ct)                                           %t copula平方欧氏距离
+dClayton2 = (CopulaEmpirical-CClayton)'* (CopulaEmpirical-CClayton)          %Clayton copula平方欧氏距离
+dFrank2 = (CopulaEmpirical-CFrank)'* (CopulaEmpirical-CFrank)                    %Frank copula平方欧氏距离
+dGumbel2 = (CopulaEmpirical-CGumbel)'* (CopulaEmpirical-CGumbel)         %Gumbel copula平方欧氏距离
+
+%绘制经验Copula的密度函数和分布函数图像
+[V1data,V2data]=meshgrid(linspace(0,1,31));          %为绘图需要，产生新的网格数据
+%通过循环计算经验Copula函数在新产生的网格点处的函数值
+for i=1:numel(V1data)
+    CopulaEmpirical(i)=C(V1data(i),V2data(i));
+end
+%绘制经验Copula分布函数图像
+surf(V1data,V2data,reshape(CopulaEmpirical,size(V1data)))
+
+
+
+%----------------------------蒙特卡洛模拟----------------------------------%
+N=1000     %蒙特卡洛模拟次数
+Mote = copularnd('Gaussian',rho_norm,N);
+Mote = copularnd('t',rho_t,nuhat,N);
+Mote = copularnd('Clayton',alpha_clay,N);
+Mote = copularnd('Frank',alpha_fra,N);
+Mote = copularnd('Gumbel',alpha_gum,N);
+
+[fMote_V1,Mote_V1sort]=ecdf(Mote(:,1));
+[fMote_V1,Mote_V1sort]=ecdf(Mote(:,2));
+
+%以下根据拟合选定的边缘分布函数计算逆累积分布函数
+p=Mote_V1sort;  
+%边缘分布为正态分布，mean为拟合均值，sigma为标准差
+mean=2200;                    %根据实际修改
+sigma=5;                         %根据实际修改
+inv=icdf('Normal',p,mean,sigma);                                                %计算正态分布函数的逆累积分布函数
+C = cat(2, fMote_V1,inv);                                                               %fMote_V1为累积概率，inv为对应的变量值
+data=xlswrite('C:/Users/Administrator/Desktop/da.xlsx',C);        %导出数据
+
+
+%边缘分布为Weibull分布，a,b为拟合参数
+a=2
+b=5
+icdf('Weibull',p,a,b);                                                                       %计算Weibull分布函数的逆累积分布函数
+C = cat(2, fMote_V1,inv);                                                               %fMote_V1为累积概率，inv为对应的变量值
+data=xlswrite('C:/Users/Administrator/Desktop/da.xlsx',C);         %导出数据
+
+
